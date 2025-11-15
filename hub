@@ -1,0 +1,274 @@
+--==================================================
+-- CONFIG + WEBHOOK SCRIPT LOADER
+--==================================================
+
+-- Ensure a shared config exists
+getgenv().Config = getgenv().Config or {}
+local cfg = getgenv().Config
+
+-- Set defaults only if they aren't already set
+if cfg.Webhook_enabled == nil then
+    cfg.Webhook_enabled = true
+end
+if cfg.Discord_ID == nil then
+    cfg.Discord_ID = ''
+end
+if cfg.Webhook == nil then
+    cfg.Webhook = ''
+end
+if cfg.Ignore_AutoDeleted == nil then
+    cfg.Ignore_AutoDeleted = false
+end
+if cfg.Secret_Only == nil then
+    cfg.Secret_Only = true
+end
+
+-- AntiAFK defaults
+if cfg.AntiAFK == nil then
+    cfg.AntiAFK = false
+end
+if cfg.AntiAFKScript == nil then
+    cfg.AntiAFKScript =
+        'https://raw.githubusercontent.com/SamF-Web/bgsi-roblox-scripts/refs/heads/main/antiafk.lua'
+end
+
+-- Point to your secrets/webhook script
+cfg.WebhookScript = cfg.WebhookScript
+    or 'https://raw.githubusercontent.com/Tappp12/bgsi/refs/heads/main/secrets'
+
+-- Load the webhook / secrets logic
+local success, err = pcall(function()
+    loadstring(game:HttpGet(cfg.WebhookScript))()
+end)
+
+if not success then
+    warn('[BGSI GUI] Failed to load webhook script:', err)
+end
+
+--==================================================
+-- RAYFIELD UI LOADER
+--==================================================
+
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+--==================================================
+-- VARIABLES
+--==================================================
+
+local autoHatchOG = false
+local autoHatchSuperSilly = false
+local autoHatchSuperOG = false
+local autoHatchFood = false -- ✅ NEW
+
+-- Auto potion variables
+local autoPotionEnabled = false
+local selectedPotion = 'Mythic' -- default
+
+-- RemoteEvent Reference (safer with WaitForChild chain)
+local remote = game:GetService('ReplicatedStorage')
+    :WaitForChild('Shared')
+    :WaitForChild('Framework')
+    :WaitForChild('Network')
+    :WaitForChild('Remote')
+    :WaitForChild('RemoteEvent')
+
+--==================================================
+-- WINDOW
+--==================================================
+
+local Window = Rayfield:CreateWindow({
+    Name = 'BGSI Auto Hatch + Webhook',
+    LoadingTitle = 'BGSI GUI',
+    LoadingSubtitle = 'Auto Hatch & Webhook Controls',
+    ConfigurationSaving = {
+        Enabled = false,
+    },
+})
+
+--==================================================
+-- TABS
+--==================================================
+
+local MainTab = Window:CreateTab('Hatching', 4483362458)
+local WebhookTab = Window:CreateTab('Webhook', 4483362458)
+
+--==================================================
+-- HATCHING TAB
+--==================================================
+
+MainTab:CreateToggle({
+    Name = 'Auto Hatch OG Egg (8)',
+    CurrentValue = false,
+    Callback = function(Value)
+        autoHatchOG = Value
+    end,
+})
+
+MainTab:CreateToggle({
+    Name = 'Auto Hatch Super Silly Egg (9)',
+    CurrentValue = false,
+    Callback = function(Value)
+        autoHatchSuperSilly = Value
+    end,
+})
+
+MainTab:CreateToggle({
+    Name = 'Auto Hatch Super OG Egg (10)',
+    CurrentValue = false,
+    Callback = function(Value)
+        autoHatchSuperOG = Value
+    end,
+})
+
+-- ✅ NEW: Food Egg toggle
+MainTab:CreateToggle({
+    Name = 'Auto Hatch Food Egg (5)',
+    CurrentValue = false,
+    Callback = function(Value)
+        autoHatchFood = Value
+    end,
+})
+
+-- 🔹 Anti AFK Toggle (SamF-Web antiafk.lua)
+MainTab:CreateToggle({
+    Name = 'Enable Anti AFK',
+    CurrentValue = cfg.AntiAFK,
+    Callback = function(Value)
+        cfg.AntiAFK = Value
+
+        if Value then
+            local ok, err2 = pcall(function()
+                loadstring(game:HttpGet(cfg.AntiAFKScript))()
+            end)
+
+            if not ok then
+                warn('[BGSI GUI] Failed to load AntiAFK script:', err2)
+            else
+                print('[BGSI GUI] AntiAFK script started.')
+            end
+        else
+            -- The SamF AntiAFK script runs a loop internally; can't really stop it cleanly
+            print(
+                '[BGSI GUI] AntiAFK turned OFF in config (rejoin to fully stop AntiAFK loop).'
+            )
+        end
+    end,
+})
+
+-- 🔹 Auto Potion Dropdown
+MainTab:CreateDropdown({
+    Name = 'Auto Potion Type',
+    Options = { 'Mythic', 'Coins', 'Lucky', 'Speed' },
+    CurrentOption = selectedPotion,
+    Callback = function(Option)
+        -- Rayfield sometimes passes a table; normalize to a string
+        if type(Option) == 'table' then
+            selectedPotion = Option[1]
+        else
+            selectedPotion = Option
+        end
+
+        print('[BGSI GUI] Selected potion:', selectedPotion)
+    end,
+})
+
+-- 🔹 Auto Potion Toggle
+MainTab:CreateToggle({
+    Name = 'Auto Use Potion (every 0.1s)',
+    CurrentValue = false,
+    Callback = function(Value)
+        autoPotionEnabled = Value
+        print('[BGSI GUI] Auto Potion Enabled:', autoPotionEnabled)
+    end,
+})
+
+--==================================================
+-- EGG HATCHING LOOP (with slight delay offset)
+--==================================================
+task.spawn(function()
+    while true do
+        if autoHatchOG then
+            remote:FireServer('HatchEgg', 'OG Egg', 15)
+        end
+        if autoHatchSuperSilly then
+            remote:FireServer('HatchEgg', 'Super Silly Egg', 15)
+        end
+        if autoHatchSuperOG then
+            remote:FireServer('HatchEgg', 'Super OG Egg', 15)
+        end
+        if autoHatchFood then --  NEW
+            remote:FireServer('HatchEgg', 'Food Egg', 15) 
+        end
+        task.wait(0.1) -- Slightly longer delay to avoid collision with potions
+    end
+end)
+
+--==================================================
+-- AUTO POTION LOOP (fires slightly before egg hatching)
+--==================================================
+task.spawn(function()
+    task.wait(0.05) -- Initial offset so potions fire BEFORE eggs
+    while true do
+        if autoPotionEnabled and selectedPotion then
+            if selectedPotion == 'Mythic' then
+                -- Mythic: 10 uses per call
+                remote:FireServer('UsePotion', 'Mythic', 2, 10)
+            elseif selectedPotion == 'Coins' then
+                remote:FireServer('UsePotion', 'Coins', 2, 10)
+            elseif selectedPotion == 'Lucky' then
+                remote:FireServer('UsePotion', 'Lucky', 2, 10)
+            elseif selectedPotion == 'Speed' then
+                remote:FireServer('UsePotion', 'Speed', 2, 10)
+            end
+        end
+
+        task.wait(0.15) -- Match egg hatching loop timing
+    end
+end)
+
+--==================================================
+-- WEBHOOK TAB (HOOKED INTO getgenv().Config)
+--==================================================
+
+WebhookTab:CreateToggle({
+    Name = 'Enable Webhook Alerts',
+    CurrentValue = cfg.Webhook_enabled,
+    Callback = function(Value)
+        cfg.Webhook_enabled = Value
+    end,
+})
+
+WebhookTab:CreateToggle({
+    Name = 'Secret Only Webhooks',
+    CurrentValue = cfg.Secret_Only,
+    Callback = function(Value)
+        cfg.Secret_Only = Value
+    end,
+})
+
+WebhookTab:CreateInput({
+    Name = 'Discord User ID (for ping)',
+    PlaceholderText = cfg.Discord_ID ~= '' and cfg.Discord_ID
+        or '12345678',
+    RemoveTextAfterFocusLost = false,
+    Callback = function(Text)
+        cfg.Discord_ID = Text
+    end,
+})
+
+WebhookTab:CreateInput({
+    Name = 'Webhook URL',
+    PlaceholderText = (
+        cfg.Webhook ~= '' and 'Webhook set'
+        or 'https://discord.com/api/webhooks/...'
+    ),
+    RemoveTextAfterFocusLost = false,
+    Callback = function(Text)
+        cfg.Webhook = Text
+    end,
+})
+
+WebhookTab:CreateParagraph({
+    Title = 'Info',
+    Content = 'Auto Deleted pets are automatically ignored and not send to webhook💥',
+})
