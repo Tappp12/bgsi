@@ -1,0 +1,76 @@
+print("[OK] Running Christmas Farm Script")
+
+if not getgenv().Config or not getgenv().Config.ChristmasFarm then
+    warn("[Alert] Christmas Farm disabled or config missing.")
+    return
+end
+
+local Config = getgenv().Config
+local selectedZone = Config.EventZone or "First"
+local delayTime = 15
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local rootPart = character:WaitForChild("HumanoidRootPart")
+
+local RemoteEvent = ReplicatedStorage.Shared.Framework.Network.Remote.RemoteEvent
+local RemoteFunction = ReplicatedStorage.Shared.Framework.Network.Remote.RemoteFunction
+
+local zonePositions = {
+    ["First"] = {
+        Vector3.new(-2599.7, 20.8, 1069.2),
+        Vector3.new(-2520.4, 20.4, 1065.4),
+        Vector3.new(-2601.4, 20.3, 1116.3),
+    },
+    ["Second"] = {
+        Vector3.new(-2450.4, 31.4, 973.9),
+        Vector3.new(-2424.4, 31.4, 971.8),
+        Vector3.new(-2416.6, 31.4, 999.2),
+    },
+    ["Third"] = {
+        Vector3.new(-2671.4, 32.2, 1210.9),
+        Vector3.new(-2706.9, 32.3, 1192.3),
+        Vector3.new(-2707.0, 31.8, 1162.1),
+    },
+}
+
+if not zonePositions[selectedZone] then
+    warn(string.format("[ERR] Invalid EventZone '%s'. Must be one of: First, Second, Third.", selectedZone))
+    return
+end
+
+local function dropOnto(pos)
+    rootPart.CFrame = CFrame.new(pos + Vector3.new(0, 10, 0))
+end
+
+local function startChristmas()
+    print("[INFO] Christmas Farm started for EventZone:", selectedZone)
+    local positions = zonePositions[selectedZone]
+    task.spawn(function()
+        while Config.ChristmasFarm do
+            for _, pos in ipairs(positions) do
+                dropOnto(pos)
+                task.wait(delayTime)
+            end
+        end
+    end)
+end
+
+local function startFestivalSpin()
+    if not Config.FestivalSpin then return end
+    print("[INFO] Festive Wheel Spin loop started.")
+    task.spawn(function()
+        while Config.FestivalSpin do
+            RemoteFunction:InvokeServer("ChristmasWheelSpin")
+            RemoteEvent:FireServer("ClaimChristmasWheelSpinQueue")
+            task.wait(delayTime)
+        end
+    end)
+end
+
+
+startChristmas()
+startFestivalSpin()
