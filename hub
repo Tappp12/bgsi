@@ -2,7 +2,7 @@
 -- CONFIG + WEBHOOK SCRIPT LOADER
 --==================================================
 
--- Ensure a shared config exists
+-- Ensure a shared config exists (keep this, it's separate from Rayfield configs)
 getgenv().Config = getgenv().Config or {}
 local cfg = getgenv().Config
 
@@ -39,9 +39,18 @@ if cfg.PlaytimeScript == nil then
     cfg.PlaytimeScript = "https://raw.bgsi-botting.xyz/core/playtime.lua"
 end
 
--- ⭐ Winter script default
+-- ⭐ Winter script & Event zone defaults
 if cfg.WinterScript == nil then
     cfg.WinterScript = "https://raw.githubusercontent.com/Tappp12/bgsi/refs/heads/main/winter"
+end
+if cfg.EventZone == nil then
+    cfg.EventZone = "First" -- Options: "First", "Second", "Third"
+end
+if cfg.ChristmasFarm == nil then
+    cfg.ChristmasFarm = true
+end
+if cfg.FestivalSpin == nil then
+    cfg.FestivalSpin = true
 end
 
 -- Point to your secrets/webhook script
@@ -90,10 +99,6 @@ local lastEggCount = nil
 -- ⭐ Season pass claimer toggle
 local autoClaimSeason = false
 
--- ⭐ Winter event script toggle
-local winterEnabled = false
-local winterLoaded = false
-
 -- RemoteEvent Reference (safer with WaitForChild chain)
 local remote = game:GetService("ReplicatedStorage")
     :WaitForChild("Shared")
@@ -126,18 +131,14 @@ do
 end
 
 --==================================================
--- WINDOW WITH CONFIG SAVING
+-- WINDOW (NO RAYFIELD CONFIG SAVE)
 --==================================================
 
 local Window = Rayfield:CreateWindow({
     Name = "BGSI Auto Hatch + Webhook",
     LoadingTitle = "BGSI GUI",
     LoadingSubtitle = "Auto Hatch & Webhook Controls",
-    ConfigurationSaving = {
-        Enabled = true,
-        FolderName = "BGSIConfigs",
-        FileName = "MainConfig"
-    }
+    -- ConfigurationSaving removed
 })
 
 --==================================================
@@ -163,48 +164,70 @@ MainTab:CreateToggle({
     end
 })
 
--- ⭐ Winter Event (Tappp12 script)
+--================ WINTER EVENT CONTROLS ================
+
+MainTab:CreateDropdown({
+    Name = "Event Zone",
+    Options = {"First", "Second", "Third"},
+    CurrentOption = {cfg.EventZone},
+    Flag = "EventZone",
+    Callback = function(Option)
+        if type(Option) == "table" then
+            cfg.EventZone = Option[1]
+        else
+            cfg.EventZone = Option
+        end
+        print("[BGSI GUI] Event zone set to: " .. cfg.EventZone)
+    end
+})
+
 MainTab:CreateToggle({
-    Name = "Enable Winter Event Script",
-    CurrentValue = false,
-    Flag = "WinterEvent",
+    Name = "Enable Christmas Farm (auto teleport)",
+    CurrentValue = cfg.ChristmasFarm,
+    Flag = "ChristmasFarm",
     Callback = function(Value)
-        winterEnabled = Value
+        cfg.ChristmasFarm = Value
+        print("[BGSI GUI] Christmas Farm enabled: " .. tostring(Value))
+    end
+})
 
-        if Value and not winterLoaded then
-            local ok, errW = pcall(function()
-                loadstring(game:HttpGet(cfg.WinterScript))()
-            end)
+MainTab:CreateToggle({
+    Name = "Enable Festival Spin",
+    CurrentValue = cfg.FestivalSpin,
+    Flag = "FestivalSpin",
+    Callback = function(Value)
+        cfg.FestivalSpin = Value
+        print("[BGSI GUI] Festival Spin enabled: " .. tostring(Value))
+    end
+})
 
-            if not ok then
-                warn("[BGSI GUI] Failed to load Winter script:", errW)
-                Rayfield:Notify({
-                    Title = "Winter Script Error",
-                    Content = "Failed to load winter script: " .. tostring(errW),
-                    Duration = 5,
-                    Image = "alert-triangle"
-                })
-            else
-                winterLoaded = true
-                Rayfield:Notify({
-                    Title = "Winter Script",
-                    Content = "Winter event script loaded and running.",
-                    Duration = 3,
-                    Image = "snowflake"
-                })
-            end
-        elseif not Value then
+MainTab:CreateButton({
+    Name = "Run Winter Event Script",
+    Callback = function()
+        local ok, errW = pcall(function()
+            loadstring(game:HttpGet(cfg.WinterScript))()
+        end)
+
+        if not ok then
+            warn("[BGSI GUI] Failed to load Winter script:", errW)
             Rayfield:Notify({
-                Title = "Winter Script",
-                Content = "Toggle off only stops auto-loading; rejoin to fully unload.",
-                Duration = 4,
-                Image = "info"
+                Title = "Winter Script Error",
+                Content = "Failed to load: " .. tostring(errW),
+                Duration = 5,
+                Image = "alert-triangle"
+            })
+        else
+            Rayfield:Notify({
+                Title = "Winter Script Activated",
+                Content = "Winter event script loaded with your settings.",
+                Duration = 3,
+                Image = "snowflake"
             })
         end
     end
 })
 
--- 🔹 Anti AFK Toggle (SamF-Web antiafk.lua)
+-- 🔹 Anti AFK Toggle
 MainTab:CreateToggle({
     Name = "Enable Anti AFK",
     CurrentValue = cfg.AntiAFK,
@@ -280,7 +303,7 @@ MainTab:CreateToggle({
 })
 
 --==================================================
--- WEBHOOK TAB (HOOKED INTO getgenv().Config)
+-- WEBHOOK TAB
 --==================================================
 
 WebhookTab:CreateToggle({
@@ -338,144 +361,13 @@ WebhookTab:CreateToggle({
 })
 
 --==================================================
--- SETTINGS TAB - CONFIG MANAGEMENT
+-- SETTINGS TAB (EMPTY FOR NOW, NO CONFIG SYSTEM)
 --==================================================
-
-SettingsTab:CreateSection("Configuration Manager")
-
-SettingsTab:CreateInput({
-    Name = "Config Name",
-    PlaceholderText = "Enter config name",
-    RemoveTextAfterFocusLost = false,
-    Callback = function(Text)
-        getgenv().CurrentConfigName = Text
-    end
-})
-
-SettingsTab:CreateButton({
-    Name = "Save Current Config",
-    Callback = function()
-        local configName = getgenv().CurrentConfigName or "DefaultConfig"
-        local HttpService = game:GetService("HttpService")
-
-        local configData = {}
-        for flag, element in pairs(Rayfield.Flags) do
-            if element.Type == "ColorPicker" then
-                configData[flag] = {
-                    R = element.Color.R * 255,
-                    G = element.Color.G * 255,
-                    B = element.Color.B * 255
-                }
-            else
-                configData[flag] = element.CurrentValue or element.CurrentKeybind or element.CurrentOption
-            end
-        end
-
-        local fileName = "BGSIConfigs/" .. configName .. ".json"
-        writefile(fileName, HttpService:JSONEncode(configData))
-
-        Rayfield:Notify({
-            Title = "Config Saved",
-            Content = "Saved config: " .. configName,
-            Duration = 3,
-            Image = "check"
-        })
-    end
-})
-
-SettingsTab:CreateInput({
-    Name = "Load Config Name",
-    PlaceholderText = "Enter config to load",
-    RemoveTextAfterFocusLost = false,
-    Callback = function(Text)
-        getgenv().LoadConfigName = Text
-    end
-})
-
-SettingsTab:CreateButton({
-    Name = "Load Selected Config",
-    Callback = function()
-        local configName = getgenv().LoadConfigName or "DefaultConfig"
-        local HttpService = game:GetService("HttpService")
-        local fileName = "BGSIConfigs/" .. configName .. ".json"
-
-        if isfile(fileName) then
-            local configData = HttpService:JSONDecode(readfile(fileName))
-
-            for flag, value in pairs(configData) do
-                if Rayfield.Flags[flag] then
-                    if Rayfield.Flags[flag].Type == "ColorPicker" then
-                        Rayfield.Flags[flag]:Set(Color3.fromRGB(value.R, value.G, value.B))
-                    else
-                        Rayfield.Flags[flag]:Set(value)
-                    end
-                end
-            end
-
-            Rayfield:Notify({
-                Title = "Config Loaded",
-                Content = "Loaded config: " .. configName,
-                Duration = 3,
-                Image = "check"
-            })
-        else
-            Rayfield:Notify({
-                Title = "Config Not Found",
-                Content = 'Config "' .. configName .. '" does not exist',
-                Duration = 3,
-                Image = "alert-triangle"
-            })
-        end
-    end
-})
-
-SettingsTab:CreateSection("Auto-Load")
-
-SettingsTab:CreateInput({
-    Name = "Auto-Load Config Name",
-    PlaceholderText = "Leave empty to disable",
-    RemoveTextAfterFocusLost = false,
-    Callback = function(Text)
-        getgenv().AutoLoadConfigName = Text
-        writefile("BGSIConfigs/AutoLoad.txt", Text)
-    end
-})
 
 SettingsTab:CreateParagraph({
-    Title = "How to Use",
-    Content = "Save configs with custom names, then load them anytime. Set Auto-Load to automatically load a config on launch."
+    Title = "Config System Disabled",
+    Content = "Rayfield configuration saving is currently disabled in this build."
 })
-
---==================================================
--- AUTO-LOAD CONFIG ON START
---==================================================
-task.spawn(function()
-    task.wait(1)
-    if isfile("BGSIConfigs/AutoLoad.txt") then
-        local autoLoadName = readfile("BGSIConfigs/AutoLoad.txt")
-        if autoLoadName and autoLoadName ~= "" then
-            getgenv().LoadConfigName = autoLoadName
-            local HttpService = game:GetService("HttpService")
-            local fileName = "BGSIConfigs/" .. autoLoadName .. ".json"
-
-            if isfile(fileName) then
-                local configData = HttpService:JSONDecode(readfile(fileName))
-
-                for flag, value in pairs(configData) do
-                    if Rayfield.Flags[flag] then
-                        if Rayfield.Flags[flag].Type == "ColorPicker" then
-                            Rayfield.Flags[flag]:Set(Color3.fromRGB(value.R, value.G, value.B))
-                        else
-                            Rayfield.Flags[flag]:Set(value)
-                        end
-                    end
-                end
-
-                print("[BGSI GUI] Auto-loaded config:", autoLoadName)
-            end
-        end
-    end
-end)
 
 --==================================================
 -- UNIVERSAL FAST HATCH LOOP
