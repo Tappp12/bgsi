@@ -445,53 +445,47 @@ SettingsTab:CreateButton({
     end,
 })
 
-SettingsTab:CreateSection('Auto-Load')
+-- ⭐ Show list of existing configs
+SettingsTab:CreateButton({
+    Name = 'Show Saved Configs',
+    Callback = function()
+        local files = listfiles and listfiles('BGSIConfigs') or {}
+        local names = {}
 
-SettingsTab:CreateInput({
-    Name = 'Auto-Load Config Name',
-    PlaceholderText = 'Leave empty to disable',
-    RemoveTextAfterFocusLost = false,
-    Callback = function(Text)
-        getgenv().AutoLoadConfigName = Text
-        writefile('BGSIConfigs/AutoLoad.txt', Text)
+        for _, path in ipairs(files) do
+            -- simple filter for .json configs
+            if path:sub(-5):lower() == ".json" then
+                local name = path:match("BGSIConfigs/(.+)%.json") or path
+                table.insert(names, name)
+            end
+        end
+
+        if #names == 0 then
+            Rayfield:Notify({
+                Title = 'Configs',
+                Content = 'No configs found in BGSIConfigs folder.',
+                Duration = 3,
+                Image = 'info',
+            })
+        else
+            local listStr = table.concat(names, ", ")
+            print("[BGSI GUI] Saved configs:", listStr)
+            Rayfield:Notify({
+                Title = 'Configs',
+                Content = 'Configs: ' .. listStr,
+                Duration = 5,
+                Image = 'info',
+            })
+        end
     end,
 })
 
+SettingsTab:CreateSection('Auto-Load')
+
 SettingsTab:CreateParagraph({
-    Title = 'How to Use',
-    Content = 'Save configs with custom names, then load them anytime. Set Auto-Load to automatically load a config on launch.',
+    Title = 'Info',
+    Content = 'Auto-load on start is disabled. Use "Load Selected Config" after choosing a name to load.'
 })
-
---==================================================
--- AUTO-LOAD CONFIG ON START
---==================================================
-task.spawn(function()
-    task.wait(1)
-    if isfile('BGSIConfigs/AutoLoad.txt') then
-        local autoLoadName = readfile('BGSIConfigs/AutoLoad.txt')
-        if autoLoadName and autoLoadName ~= '' then
-            getgenv().LoadConfigName = autoLoadName
-            local HttpService = game:GetService('HttpService')
-            local fileName = 'BGSIConfigs/' .. autoLoadName .. '.json'
-
-            if isfile(fileName) then
-                local configData = HttpService:JSONDecode(readfile(fileName))
-
-                for flag, value in pairs(configData) do
-                    if Rayfield.Flags[flag] then
-                        if Rayfield.Flags[flag].Type == 'ColorPicker' then
-                            Rayfield.Flags[flag]:Set(Color3.fromRGB(value.R, value.G, value.B))
-                        else
-                            Rayfield.Flags[flag]:Set(value)
-                        end
-                    end
-                end
-
-                print('[BGSI GUI] Auto-loaded config:', autoLoadName)
-            end
-        end
-    end
-end)
 
 --==================================================
 -- LAST EGG HOOK + FAST HATCH LOOP
