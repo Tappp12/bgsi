@@ -7,7 +7,9 @@ end
 
 local Config = getgenv().Config
 local selectedZone = Config.EventZone or "First"
-local delayTime = 15
+
+-- shorter delay between teleports
+local delayTime = 3  -- was 15
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -43,15 +45,18 @@ if not zonePositions[selectedZone] then
 end
 
 local function dropOnto(pos)
-    rootPart.CFrame = CFrame.new(pos + Vector3.new(0, 10, 0))
+    -- small Y offset to avoid getting stuck in the ground/parts
+    rootPart.CFrame = CFrame.new(pos + Vector3.new(0, 6, 0))
 end
 
 local function startChristmas()
     print("[INFO] Christmas Farm started for EventZone:", selectedZone)
     local positions = zonePositions[selectedZone]
+
     task.spawn(function()
         while Config.ChristmasFarm do
             for _, pos in ipairs(positions) do
+                if not Config.ChristmasFarm then break end
                 dropOnto(pos)
                 task.wait(delayTime)
             end
@@ -62,15 +67,15 @@ end
 local function startFestivalSpin()
     if not Config.FestivalSpin then return end
     print("[INFO] Festive Wheel Spin loop started.")
+
     task.spawn(function()
         while Config.FestivalSpin do
             RemoteFunction:InvokeServer("ChristmasWheelSpin")
             RemoteEvent:FireServer("ClaimChristmasWheelSpinQueue")
-            task.wait(delayTime)
+            task.wait(5) -- spin less often so it doesn't feel spammy
         end
     end)
 end
-
 
 startChristmas()
 startFestivalSpin()
