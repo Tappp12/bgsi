@@ -45,9 +45,6 @@ cfg.WebhookScript = cfg.WebhookScript
     or 'https://raw.githubusercontent.com/Tappp12/bgsi/refs/heads/main/secrets'
 
 -- ⭐ Christmas / Winter Event defaults
-if cfg.EventZone == nil then
-    cfg.EventZone = "First" -- "First", "Second", "Third"
-end
 if cfg.ChristmasFarm == nil then
     cfg.ChristmasFarm = false -- start off by default
 end
@@ -231,20 +228,7 @@ MainTab:CreateToggle({
     end,
 })
 
--- ⭐ Christmas Event Zone dropdown
-MainTab:CreateDropdown({
-    Name = "Christmas Event Zone",
-    Options = { "First", "Second", "Third", "All" },
-    CurrentOption = { cfg.EventZone or "First" },
-    Flag = "EventZone",
-    Callback = function(Option)
-        local zone = type(Option) == "table" and Option[1] or Option
-        cfg.EventZone = zone
-        print("[BGSI GUI] EventZone:", cfg.EventZone)
-    end,
-})
-
--- ⭐ Christmas Farm toggle (teleport houses loop)
+-- ⭐ Christmas Farm toggle (teleport all houses)
 MainTab:CreateToggle({
     Name = "Christmas Farm (TP houses)",
     CurrentValue = cfg.ChristmasFarm,
@@ -453,7 +437,6 @@ SettingsTab:CreateButton({
         local names = {}
 
         for _, path in ipairs(files) do
-            -- simple filter for .json configs
             if path:sub(-5):lower() == ".json" then
                 local name = path:match("BGSIConfigs/(.+)%.json") or path
                 table.insert(names, name)
@@ -503,7 +486,6 @@ do
         local args = { ... }
         local method = getnamecallmethod()
 
-        -- Expect: remote:FireServer("HatchEgg", EggName, Count)
         if method == "FireServer"
             and self == remote
             and args[1] == "HatchEgg"
