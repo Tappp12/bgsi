@@ -6,7 +6,6 @@ if not getgenv().Config or not getgenv().Config.ChristmasFarm then
 end
 
 local Config = getgenv().Config
-local selectedZone = Config.EventZone or "First"
 
 -- shorter delay between teleports
 local delayTime = 5  -- was 15
@@ -39,41 +38,25 @@ local zonePositions = {
     },
 }
 
--- allow "All" as a special virtual zone
-if selectedZone ~= "All" and not zonePositions[selectedZone] then
-    warn(string.format("[ERR] Invalid EventZone '%s'. Must be one of: First, Second, Third, All.", selectedZone))
-    return
-end
-
 local function dropOnto(pos)
     -- small Y offset to avoid getting stuck in the ground/parts
     rootPart.CFrame = CFrame.new(pos + Vector3.new(0, 6, 0))
 end
 
 local function startChristmas()
-    print("[INFO] Christmas Farm started for EventZone:", selectedZone)
+    print("[INFO] Christmas Farm started (all zones).")
 
     task.spawn(function()
         while Config.ChristmasFarm do
-            if selectedZone == "All" then
-                -- loop through ALL zones in a fixed order
-                for _, zoneName in ipairs({ "First", "Second", "Third" }) do
-                    local positions = zonePositions[zoneName]
-                    for _, pos in ipairs(positions) do
-                        if not Config.ChristmasFarm then break end
-                        dropOnto(pos)
-                        task.wait(delayTime)
-                    end
-                    if not Config.ChristmasFarm then break end
-                end
-            else
-                -- normal single‑zone behavior
-                local positions = zonePositions[selectedZone]
+            -- always loop through ALL zones: First -> Second -> Third
+            for _, zoneName in ipairs({ "First", "Second", "Third" }) do
+                local positions = zonePositions[zoneName]
                 for _, pos in ipairs(positions) do
                     if not Config.ChristmasFarm then break end
                     dropOnto(pos)
                     task.wait(delayTime)
                 end
+                if not Config.ChristmasFarm then break end
             end
         end
     end)
