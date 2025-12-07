@@ -2,7 +2,7 @@
 -- CONFIG + WEBHOOK SCRIPT LOADER
 --==================================================
 
--- Ensure a shared config exists (keep this, it's separate from Rayfield configs)
+-- Ensure a shared config exists
 getgenv().Config = getgenv().Config or {}
 local cfg = getgenv().Config
 
@@ -11,10 +11,10 @@ if cfg.Webhook_enabled == nil then
     cfg.Webhook_enabled = true
 end
 if cfg.Discord_ID == nil then
-    cfg.Discord_ID = ""
+    cfg.Discord_ID = ''
 end
 if cfg.Webhook == nil then
-    cfg.Webhook = ""
+    cfg.Webhook = ''
 end
 if cfg.Ignore_AutoDeleted == nil then
     cfg.Ignore_AutoDeleted = false
@@ -28,7 +28,8 @@ if cfg.AntiAFK == nil then
     cfg.AntiAFK = false
 end
 if cfg.AntiAFKScript == nil then
-    cfg.AntiAFKScript = "https://raw.githubusercontent.com/SamF-Web/bgsi-roblox-scripts/refs/heads/main/antiafk.lua"
+    cfg.AntiAFKScript =
+        'https://raw.githubusercontent.com/SamF-Web/bgsi-roblox-scripts/refs/heads/main/antiafk.lua'
 end
 
 -- ⭐ Playtime claimer defaults
@@ -36,33 +37,35 @@ if cfg.ClaimPlaytime == nil then
     cfg.ClaimPlaytime = true
 end
 if cfg.PlaytimeScript == nil then
-    cfg.PlaytimeScript = "https://raw.bgsi-botting.xyz/core/playtime.lua"
-end
-
--- ⭐ Winter script & Event zone defaults
-if cfg.WinterScript == nil then
-    cfg.WinterScript = "https://raw.githubusercontent.com/Tappp12/bgsi/refs/heads/main/winter"
-end
-if cfg.EventZone == nil then
-    cfg.EventZone = "First" -- Options: "First", "Second", "Third"
-end
-if cfg.ChristmasFarm == nil then
-    cfg.ChristmasFarm = true
-end
-if cfg.FestivalSpin == nil then
-    cfg.FestivalSpin = true
+    cfg.PlaytimeScript = 'https://raw.bgsi-botting.xyz/core/playtime.lua'
 end
 
 -- Point to your secrets/webhook script
-cfg.WebhookScript = cfg.WebhookScript or "https://raw.githubusercontent.com/Tappp12/bgsi/refs/heads/main/secrets"
+cfg.WebhookScript = cfg.WebhookScript
+    or 'https://raw.githubusercontent.com/Tappp12/bgsi/refs/heads/main/secrets'
+
+-- ⭐ Christmas / Winter Event defaults
+if cfg.EventZone == nil then
+    cfg.EventZone = "First" -- "First", "Second", "Third"
+end
+if cfg.ChristmasFarm == nil then
+    cfg.ChristmasFarm = false -- start off by default
+end
+if cfg.FestivalSpin == nil then
+    cfg.FestivalSpin = false
+end
+if cfg.ChristmasEventScript == nil then
+    cfg.ChristmasEventScript = "https://raw.githubusercontent.com/Tappp12/bgsi/refs/heads/main/winter"
+end
 
 -- Load the webhook / secrets logic
-local success, err = pcall(function()
-    loadstring(game:HttpGet(cfg.WebhookScript))()
-end)
-
-if not success then
-    warn("[BGSI GUI] Failed to load webhook script:", err)
+do
+    local success, err = pcall(function()
+        loadstring(game:HttpGet(cfg.WebhookScript))()
+    end)
+    if not success then
+        warn('[BGSI GUI] Failed to load webhook script:', err)
+    end
 end
 
 -- ⭐ Optionally auto-load playtime claimer on script start if enabled
@@ -71,54 +74,446 @@ if cfg.ClaimPlaytime then
         loadstring(game:HttpGet(cfg.PlaytimeScript))()
     end)
     if not ok then
-        warn("[BGSI GUI] Failed to load Playtime claimer script:", errPT)
+        warn('[BGSI GUI] Failed to load Playtime claimer script:', errPT)
     else
-        print("[BGSI GUI] Playtime claimer started on launch.")
+        print('[BGSI GUI] Playtime claimer started on launch.')
+    end
+end
+
+-- ⭐ Optionally auto-load Christmas Event script if enabled
+if cfg.ChristmasFarm or cfg.FestivalSpin then
+    local ok, errX = pcall(function()
+        loadstring(game:HttpGet(cfg.ChristmasEventScript))()
+    end)
+    if not ok then
+        warn("[BGSI GUI] Failed to load Christmas Event script:", errX)
+    else
+        print("[BGSI GUI] Christmas Event script loaded on launch.")
     end
 end
 
 --==================================================
--- RAYFIELD UI LOADER
+-- SERVICES & VARIABLES
 --==================================================
 
-local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
-
---==================================================
--- VARIABLES
---==================================================
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- Auto potion variables
 local autoPotionEnabled = false
-local selectedPotion = "Mythic" -- default
+local selectedPotion = 'Mythic' -- default
 
 -- ⭐ Fast Hatch variables
 local fastHatchEnabled = false
-local lastEggName = nil
-local lastEggCount = nil
 
 -- ⭐ Season pass claimer toggle
 local autoClaimSeason = false
 
--- RemoteEvent Reference (safer with WaitForChild chain)
-local remote = game:GetService("ReplicatedStorage")
+-- RemoteEvent Reference
+local remote = ReplicatedStorage
     :WaitForChild("Shared")
     :WaitForChild("Framework")
     :WaitForChild("Network")
     :WaitForChild("Remote")
     :WaitForChild("RemoteEvent")
 
--- ⭐ Hook __namecall to detect when the game hatches an egg
+--==================================================
+-- WINDOW WITH CONFIG SAVING
+--==================================================
+
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+    Name = 'BGSI Auto Hatch + Webhook',
+    LoadingTitle = 'BGSI GUI',
+    LoadingSubtitle = 'Auto Hatch & Webhook Controls',
+    ConfigurationSaving = {
+        Enabled = true,
+        FolderName = 'BGSIConfigs',
+        FileName = 'MainConfig'
+    },
+})
+
+--==================================================
+-- TABS
+--==================================================
+
+local MainTab = Window:CreateTab('Hatching', 4483362458)
+local WebhookTab = Window:CreateTab('Webhook', 4483362458)
+local SettingsTab = Window:CreateTab('Settings', 'settings')
+
+--==================================================
+-- HATCHING TAB
+--==================================================
+
+-- ⭐ Universal Fast Hatch toggle (uses last hatched egg)
+MainTab:CreateToggle({
+    Name = 'Auto Hatch Last Egg',
+    CurrentValue = false,
+    Flag = 'FastHatch',
+    Callback = function(Value)
+        fastHatchEnabled = Value
+        print('[BGSI GUI] Fast hatch enabled:', fastHatchEnabled)
+    end,
+})
+
+-- 🔹 Anti AFK Toggle (SamF-Web antiafk.lua)
+MainTab:CreateToggle({
+    Name = 'Enable Anti AFK',
+    CurrentValue = cfg.AntiAFK,
+    Flag = 'AntiAFK',
+    Callback = function(Value)
+        cfg.AntiAFK = Value
+
+        if Value then
+            local ok, err2 = pcall(function()
+                loadstring(game:HttpGet(cfg.AntiAFKScript))()
+            end)
+
+            if not ok then
+                warn('[BGSI GUI] Failed to load AntiAFK script:', err2)
+            else
+                print('[BGSI GUI] AntiAFK script started.')
+            end
+        else
+            print('[BGSI GUI] AntiAFK turned OFF in config (rejoin to fully stop AntiAFK loop).')
+        end
+    end,
+})
+
+-- 🔹 Auto Potion Dropdown
+MainTab:CreateDropdown({
+    Name = 'Auto Potion Type',
+    Options = { 'Mythic', 'Coins', 'Lucky', 'Speed' },
+    CurrentOption = {'Mythic'},
+    Flag = 'PotionType',
+    Callback = function(Option)
+        if type(Option) == 'table' then
+            selectedPotion = Option[1]
+        else
+            selectedPotion = Option
+        end
+
+        print('[BGSI GUI] Selected potion:', selectedPotion)
+    end,
+})
+
+-- 🔹 Auto Potion Toggle
+MainTab:CreateToggle({
+    Name = 'Auto Use Potion (every 0.15s)',
+    CurrentValue = false,
+    Flag = 'AutoPotion',
+    Callback = function(Value)
+        autoPotionEnabled = Value
+        print('[BGSI GUI] Auto Potion Enabled:', autoPotionEnabled)
+    end,
+})
+
+-- ⭐ Playtime GUI toggle
+MainTab:CreateToggle({
+    Name = 'Auto-claim Playtime Rewards',
+    CurrentValue = cfg.ClaimPlaytime,
+    Flag = 'ClaimPlaytime',
+    Callback = function(Value)
+        cfg.ClaimPlaytime = Value
+
+        if Value then
+            local ok, errPT = pcall(function()
+                loadstring(game:HttpGet(cfg.PlaytimeScript))()
+            end)
+            if not ok then
+                warn('[BGSI GUI] Failed to load Playtime claimer script:', errPT)
+            else
+                print('[BGSI GUI] Playtime claimer started.')
+            end
+        else
+            print('[BGSI GUI] Playtime claimer disabled (rejoin to fully stop it).')
+        end
+    end,
+})
+
+-- ⭐ Christmas Event Zone dropdown
+MainTab:CreateDropdown({
+    Name = "Christmas Event Zone",
+    Options = { "First", "Second", "Third" },
+    CurrentOption = { cfg.EventZone or "First" },
+    Flag = "EventZone",
+    Callback = function(Option)
+        local zone = type(Option) == "table" and Option[1] or Option
+        cfg.EventZone = zone
+        print("[BGSI GUI] EventZone:", cfg.EventZone)
+    end,
+})
+
+-- ⭐ Christmas Farm toggle (teleport houses loop)
+MainTab:CreateToggle({
+    Name = "Christmas Farm (TP houses)",
+    CurrentValue = cfg.ChristmasFarm,
+    Flag = "ChristmasFarm",
+    Callback = function(Value)
+        cfg.ChristmasFarm = Value
+        print("[BGSI GUI] ChristmasFarm:", cfg.ChristmasFarm)
+
+        if Value then
+            local ok, errX = pcall(function()
+                loadstring(game:HttpGet(cfg.ChristmasEventScript))()
+            end)
+            if not ok then
+                warn("[BGSI GUI] Failed to load Christmas Event script:", errX)
+            else
+                print("[BGSI GUI] Christmas Event script (farm) started.")
+            end
+        else
+            print("[BGSI GUI] Christmas farm turned OFF in config (rejoin to fully stop loop).")
+        end
+    end,
+})
+
+-- ⭐ Festival Spin Tickets toggle
+MainTab:CreateToggle({
+    Name = "Festival Spin Tickets",
+    CurrentValue = cfg.FestivalSpin,
+    Flag = "FestivalSpin",
+    Callback = function(Value)
+        cfg.FestivalSpin = Value
+        print("[BGSI GUI] FestivalSpin:", cfg.FestivalSpin)
+
+        if Value then
+            local ok, errX = pcall(function()
+                loadstring(game:HttpGet(cfg.ChristmasEventScript))()
+            end)
+            if not ok then
+                warn("[BGSI GUI] Failed to load Christmas Event script:", errX)
+            else
+                print("[BGSI GUI] Christmas Event script (spin) started.")
+            end
+        else
+            print("[BGSI GUI] Festival spin turned OFF in config (rejoin to fully stop loop).")
+        end
+    end,
+})
+
+--==================================================
+-- WEBHOOK TAB (HOOKED INTO getgenv().Config)
+--==================================================
+
+WebhookTab:CreateToggle({
+    Name = 'Enable Webhook Alerts',
+    CurrentValue = cfg.Webhook_enabled,
+    Flag = 'WebhookEnabled',
+    Callback = function(Value)
+        cfg.Webhook_enabled = Value
+    end,
+})
+
+WebhookTab:CreateToggle({
+    Name = 'Secret Only Webhooks',
+    CurrentValue = cfg.Secret_Only,
+    Flag = 'SecretOnly',
+    Callback = function(Value)
+        cfg.Secret_Only = Value
+    end,
+})
+
+WebhookTab:CreateInput({
+    Name = 'Discord User ID (for ping)',
+    PlaceholderText = cfg.Discord_ID ~= '' and cfg.Discord_ID or '12345678',
+    RemoveTextAfterFocusLost = false,
+    Flag = 'DiscordID',
+    Callback = function(Text)
+        cfg.Discord_ID = Text
+    end,
+})
+
+WebhookTab:CreateInput({
+    Name = 'Webhook URL',
+    PlaceholderText = (
+        cfg.Webhook ~= '' and 'Webhook set'
+        or 'https://discord.com/api/webhooks/...'
+    ),
+    RemoveTextAfterFocusLost = false,
+    Flag = 'WebhookURL',
+    Callback = function(Text)
+        cfg.Webhook = Text
+    end,
+})
+
+WebhookTab:CreateParagraph({
+    Title = 'Info',
+    Content = 'Auto Deleted pets are automatically ignored and not send to webhook💥',
+})
+
+-- ⭐ Season Pass Auto-Claim Toggle
+WebhookTab:CreateToggle({
+    Name = 'Auto-Claim Season Pass',
+    CurrentValue = false,
+    Flag = 'ClaimSeason',
+    Callback = function(Value)
+        autoClaimSeason = Value
+        print('[BGSI GUI] Auto-Claim Season Pass:', autoClaimSeason)
+    end,
+})
+
+--==================================================
+-- SETTINGS TAB - CONFIG MANAGEMENT
+--==================================================
+
+SettingsTab:CreateSection('Configuration Manager')
+
+SettingsTab:CreateInput({
+    Name = 'Config Name',
+    PlaceholderText = 'Enter config name',
+    RemoveTextAfterFocusLost = false,
+    Callback = function(Text)
+        getgenv().CurrentConfigName = Text
+    end,
+})
+
+SettingsTab:CreateButton({
+    Name = 'Save Current Config',
+    Callback = function()
+        local configName = getgenv().CurrentConfigName or 'DefaultConfig'
+        local HttpService = game:GetService('HttpService')
+
+        local configData = {}
+        for flag, element in pairs(Rayfield.Flags) do
+            if element.Type == 'ColorPicker' then
+                configData[flag] = {
+                    R = element.Color.R * 255,
+                    G = element.Color.G * 255,
+                    B = element.Color.B * 255
+                }
+            else
+                configData[flag] = element.CurrentValue or element.CurrentKeybind or element.CurrentOption
+            end
+        end
+
+        local fileName = 'BGSIConfigs/' .. configName .. '.json'
+        writefile(fileName, HttpService:JSONEncode(configData))
+
+        Rayfield:Notify({
+            Title = 'Config Saved',
+            Content = 'Saved config: ' .. configName,
+            Duration = 3,
+            Image = 'check',
+        })
+    end,
+})
+
+SettingsTab:CreateInput({
+    Name = 'Load Config Name',
+    PlaceholderText = 'Enter config to load',
+    RemoveTextAfterFocusLost = false,
+    Callback = function(Text)
+        getgenv().LoadConfigName = Text
+    end,
+})
+
+SettingsTab:CreateButton({
+    Name = 'Load Selected Config',
+    Callback = function()
+        local configName = getgenv().LoadConfigName or 'DefaultConfig'
+        local HttpService = game:GetService('HttpService')
+        local fileName = 'BGSIConfigs/' .. configName .. '.json'
+
+        if isfile(fileName) then
+            local configData = HttpService:JSONDecode(readfile(fileName))
+
+            for flag, value in pairs(configData) do
+                if Rayfield.Flags[flag] then
+                    if Rayfield.Flags[flag].Type == 'ColorPicker' then
+                        Rayfield.Flags[flag]:Set(Color3.fromRGB(value.R, value.G, value.B))
+                    else
+                        Rayfield.Flags[flag]:Set(value)
+                    end
+                end
+            end
+
+            Rayfield:Notify({
+                Title = 'Config Loaded',
+                Content = 'Loaded config: ' .. configName,
+                Duration = 3,
+                Image = 'check',
+            })
+        else
+            Rayfield:Notify({
+                Title = 'Config Not Found',
+                Content = 'Config "' .. configName .. '" does not exist',
+                Duration = 3,
+                Image = 'alert-triangle',
+            })
+        end
+    end,
+})
+
+SettingsTab:CreateSection('Auto-Load')
+
+SettingsTab:CreateInput({
+    Name = 'Auto-Load Config Name',
+    PlaceholderText = 'Leave empty to disable',
+    RemoveTextAfterFocusLost = false,
+    Callback = function(Text)
+        getgenv().AutoLoadConfigName = Text
+        writefile('BGSIConfigs/AutoLoad.txt', Text)
+    end,
+})
+
+SettingsTab:CreateParagraph({
+    Title = 'How to Use',
+    Content = 'Save configs with custom names, then load them anytime. Set Auto-Load to automatically load a config on launch.',
+})
+
+--==================================================
+-- AUTO-LOAD CONFIG ON START
+--==================================================
+task.spawn(function()
+    task.wait(1)
+    if isfile('BGSIConfigs/AutoLoad.txt') then
+        local autoLoadName = readfile('BGSIConfigs/AutoLoad.txt')
+        if autoLoadName and autoLoadName ~= '' then
+            getgenv().LoadConfigName = autoLoadName
+            local HttpService = game:GetService('HttpService')
+            local fileName = 'BGSIConfigs/' .. autoLoadName .. '.json'
+
+            if isfile(fileName) then
+                local configData = HttpService:JSONDecode(readfile(fileName))
+
+                for flag, value in pairs(configData) do
+                    if Rayfield.Flags[flag] then
+                        if Rayfield.Flags[flag].Type == 'ColorPicker' then
+                            Rayfield.Flags[flag]:Set(Color3.fromRGB(value.R, value.G, value.B))
+                        else
+                            Rayfield.Flags[flag]:Set(value)
+                        end
+                    end
+                end
+
+                print('[BGSI GUI] Auto-loaded config:', autoLoadName)
+            end
+        end
+    end
+end)
+
+--==================================================
+-- LAST EGG HOOK + FAST HATCH LOOP
+--==================================================
+
+local lastEggName
+local lastEggCount
+
 do
     local mt = getrawmetatable(game)
     local oldNamecall = mt.__namecall
     setreadonly(mt, false)
 
     mt.__namecall = newcclosure(function(self, ...)
-        local args = {...}
+        local args = { ... }
         local method = getnamecallmethod()
 
-        -- When the game calls: remote:FireServer("HatchEgg", EggName, Count)
-        if method == "FireServer" and self == remote and args[1] == "HatchEgg" then
+        -- Expect: remote:FireServer("HatchEgg", EggName, Count)
+        if method == "FireServer"
+            and self == remote
+            and args[1] == "HatchEgg"
+        then
             lastEggName = args[2]
             lastEggCount = args[3]
             print("[BGSI GUI] Last egg set to:", lastEggName, lastEggCount)
@@ -130,248 +525,6 @@ do
     setreadonly(mt, true)
 end
 
---==================================================
--- WINDOW (NO RAYFIELD CONFIG SAVE)
---==================================================
-
-local Window = Rayfield:CreateWindow({
-    Name = "BGSI Auto Hatch + Webhook",
-    LoadingTitle = "BGSI GUI",
-    LoadingSubtitle = "Auto Hatch & Webhook Controls",
-    -- ConfigurationSaving removed
-})
-
---==================================================
--- TABS
---==================================================
-
-local MainTab = Window:CreateTab("Hatching", 4483362458)
-local WebhookTab = Window:CreateTab("Webhook", 4483362458)
-local SettingsTab = Window:CreateTab("Settings", "settings")
-
---==================================================
--- HATCHING TAB
---==================================================
-
--- ⭐ Universal Fast Hatch toggle (uses last hatched egg)
-MainTab:CreateToggle({
-    Name = "Auto Hatch Last Egg",
-    CurrentValue = false,
-    Flag = "FastHatch",
-    Callback = function(Value)
-        fastHatchEnabled = Value
-        print("[BGSI GUI] Fast hatch enabled:", fastHatchEnabled)
-    end
-})
-
---================ WINTER EVENT CONTROLS ================
-
-MainTab:CreateDropdown({
-    Name = "Event Zone",
-    Options = {"First", "Second", "Third"},
-    CurrentOption = {cfg.EventZone},
-    Flag = "EventZone",
-    Callback = function(Option)
-        if type(Option) == "table" then
-            cfg.EventZone = Option[1]
-        else
-            cfg.EventZone = Option
-        end
-        print("[BGSI GUI] Event zone set to: " .. cfg.EventZone)
-    end
-})
-
-MainTab:CreateToggle({
-    Name = "Enable Christmas Farm (auto teleport)",
-    CurrentValue = cfg.ChristmasFarm,
-    Flag = "ChristmasFarm",
-    Callback = function(Value)
-        cfg.ChristmasFarm = Value
-        print("[BGSI GUI] Christmas Farm enabled: " .. tostring(Value))
-    end
-})
-
-MainTab:CreateToggle({
-    Name = "Enable Festival Spin",
-    CurrentValue = cfg.FestivalSpin,
-    Flag = "FestivalSpin",
-    Callback = function(Value)
-        cfg.FestivalSpin = Value
-        print("[BGSI GUI] Festival Spin enabled: " .. tostring(Value))
-    end
-})
-
-MainTab:CreateButton({
-    Name = "Run Winter Event Script",
-    Callback = function()
-        local ok, errW = pcall(function()
-            loadstring(game:HttpGet(cfg.WinterScript))()
-        end)
-
-        if not ok then
-            warn("[BGSI GUI] Failed to load Winter script:", errW)
-            Rayfield:Notify({
-                Title = "Winter Script Error",
-                Content = "Failed to load: " .. tostring(errW),
-                Duration = 5,
-                Image = "alert-triangle"
-            })
-        else
-            Rayfield:Notify({
-                Title = "Winter Script Activated",
-                Content = "Winter event script loaded with your settings.",
-                Duration = 3,
-                Image = "snowflake"
-            })
-        end
-    end
-})
-
--- 🔹 Anti AFK Toggle
-MainTab:CreateToggle({
-    Name = "Enable Anti AFK",
-    CurrentValue = cfg.AntiAFK,
-    Flag = "AntiAFK",
-    Callback = function(Value)
-        cfg.AntiAFK = Value
-
-        if Value then
-            local ok, err2 = pcall(function()
-                loadstring(game:HttpGet(cfg.AntiAFKScript))()
-            end)
-
-            if not ok then
-                warn("[BGSI GUI] Failed to load AntiAFK script:", err2)
-            else
-                print("[BGSI GUI] AntiAFK script started.")
-            end
-        else
-            print("[BGSI GUI] AntiAFK turned OFF in config (rejoin to fully stop AntiAFK loop).")
-        end
-    end
-})
-
--- 🔹 Auto Potion Dropdown
-MainTab:CreateDropdown({
-    Name = "Auto Potion Type",
-    Options = {"Mythic", "Coins", "Lucky", "Speed"},
-    CurrentOption = {"Mythic"},
-    Flag = "PotionType",
-    Callback = function(Option)
-        if type(Option) == "table" then
-            selectedPotion = Option[1]
-        else
-            selectedPotion = Option
-        end
-
-        print("[BGSI GUI] Selected potion:", selectedPotion)
-    end
-})
-
--- 🔹 Auto Potion Toggle
-MainTab:CreateToggle({
-    Name = "Auto Use Potion (every 0.15s)",
-    CurrentValue = false,
-    Flag = "AutoPotion",
-    Callback = function(Value)
-        autoPotionEnabled = Value
-        print("[BGSI GUI] Auto Potion Enabled:", autoPotionEnabled)
-    end
-})
-
--- ⭐ Playtime GUI toggle
-MainTab:CreateToggle({
-    Name = "Auto-claim Playtime Rewards",
-    CurrentValue = cfg.ClaimPlaytime,
-    Flag = "ClaimPlaytime",
-    Callback = function(Value)
-        cfg.ClaimPlaytime = Value
-
-        if Value then
-            local ok, errPT = pcall(function()
-                loadstring(game:HttpGet(cfg.PlaytimeScript))()
-            end)
-            if not ok then
-                warn("[BGSI GUI] Failed to load Playtime claimer script:", errPT)
-            else
-                print("[BGSI GUI] Playtime claimer started.")
-            end
-        else
-            print("[BGSI GUI] Playtime claimer disabled (rejoin to fully stop it).")
-        end
-    end
-})
-
---==================================================
--- WEBHOOK TAB
---==================================================
-
-WebhookTab:CreateToggle({
-    Name = "Enable Webhook Alerts",
-    CurrentValue = cfg.Webhook_enabled,
-    Flag = "WebhookEnabled",
-    Callback = function(Value)
-        cfg.Webhook_enabled = Value
-    end
-})
-
-WebhookTab:CreateToggle({
-    Name = "Secret Only Webhooks",
-    CurrentValue = cfg.Secret_Only,
-    Flag = "SecretOnly",
-    Callback = function(Value)
-        cfg.Secret_Only = Value
-    end
-})
-
-WebhookTab:CreateInput({
-    Name = "Discord User ID (for ping)",
-    PlaceholderText = cfg.Discord_ID ~= "" and cfg.Discord_ID or "12345678",
-    RemoveTextAfterFocusLost = false,
-    Flag = "DiscordID",
-    Callback = function(Text)
-        cfg.Discord_ID = Text
-    end
-})
-
-WebhookTab:CreateInput({
-    Name = "Webhook URL",
-    PlaceholderText = (cfg.Webhook ~= "" and "Webhook set" or "https://discord.com/api/webhooks/..."),
-    RemoveTextAfterFocusLost = false,
-    Flag = "WebhookURL",
-    Callback = function(Text)
-        cfg.Webhook = Text
-    end
-})
-
-WebhookTab:CreateParagraph({
-    Title = "Info",
-    Content = "Auto Deleted pets are automatically ignored and not send to webhook💥"
-})
-
--- ⭐ Season Pass Auto-Claim Toggle
-WebhookTab:CreateToggle({
-    Name = "Auto-Claim Season Pass",
-    CurrentValue = false,
-    Flag = "ClaimSeason",
-    Callback = function(Value)
-        autoClaimSeason = Value
-        print("[BGSI GUI] Auto-Claim Season Pass:", autoClaimSeason)
-    end
-})
-
---==================================================
--- SETTINGS TAB (EMPTY FOR NOW, NO CONFIG SYSTEM)
---==================================================
-
-SettingsTab:CreateParagraph({
-    Title = "Config System Disabled",
-    Content = "Rayfield configuration saving is currently disabled in this build."
-})
-
---==================================================
--- UNIVERSAL FAST HATCH LOOP
---==================================================
 task.spawn(function()
     while true do
         if fastHatchEnabled and lastEggName and lastEggCount then
@@ -387,14 +540,14 @@ end)
 task.spawn(function()
     while true do
         if autoPotionEnabled and selectedPotion then
-            if selectedPotion == "Mythic" then
-                remote:FireServer("UsePotion", "Mythic", 2, 10)
-            elseif selectedPotion == "Coins" then
-                remote:FireServer("UsePotion", "Coins", 2, 10)
-            elseif selectedPotion == "Lucky" then
-                remote:FireServer("UsePotion", "Lucky", 2, 10)
-            elseif selectedPotion == "Speed" then
-                remote:FireServer("UsePotion", "Speed", 2, 10)
+            if selectedPotion == 'Mythic' then
+                remote:FireServer('UsePotion', 'Mythic', 2, 10)
+            elseif selectedPotion == 'Coins' then
+                remote:FireServer('UsePotion', 'Coins', 2, 10)
+            elseif selectedPotion == 'Lucky' then
+                remote:FireServer('UsePotion', 'Lucky', 2, 10)
+            elseif selectedPotion == 'Speed' then
+                remote:FireServer('UsePotion', 'Speed', 2, 10)
             end
         end
 
@@ -406,7 +559,7 @@ end)
 task.spawn(function()
     while true do
         if autoClaimSeason then
-            remote:FireServer("ClaimSeason")
+            remote:FireServer('ClaimSeason')
         end
         task.wait(5)
     end
