@@ -9,7 +9,7 @@ local Config = getgenv().Config
 local selectedZone = Config.EventZone or "First"
 
 -- shorter delay between teleports
-local delayTime = 3  -- was 15
+local delayTime = 5  -- was 15
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
