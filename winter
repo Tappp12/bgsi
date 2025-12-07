@@ -39,8 +39,9 @@ local zonePositions = {
     },
 }
 
-if not zonePositions[selectedZone] then
-    warn(string.format("[ERR] Invalid EventZone '%s'. Must be one of: First, Second, Third.", selectedZone))
+-- allow "All" as a special virtual zone
+if selectedZone ~= "All" and not zonePositions[selectedZone] then
+    warn(string.format("[ERR] Invalid EventZone '%s'. Must be one of: First, Second, Third, All.", selectedZone))
     return
 end
 
@@ -51,14 +52,28 @@ end
 
 local function startChristmas()
     print("[INFO] Christmas Farm started for EventZone:", selectedZone)
-    local positions = zonePositions[selectedZone]
 
     task.spawn(function()
         while Config.ChristmasFarm do
-            for _, pos in ipairs(positions) do
-                if not Config.ChristmasFarm then break end
-                dropOnto(pos)
-                task.wait(delayTime)
+            if selectedZone == "All" then
+                -- loop through ALL zones in a fixed order
+                for _, zoneName in ipairs({ "First", "Second", "Third" }) do
+                    local positions = zonePositions[zoneName]
+                    for _, pos in ipairs(positions) do
+                        if not Config.ChristmasFarm then break end
+                        dropOnto(pos)
+                        task.wait(delayTime)
+                    end
+                    if not Config.ChristmasFarm then break end
+                end
+            else
+                -- normal single‑zone behavior
+                local positions = zonePositions[selectedZone]
+                for _, pos in ipairs(positions) do
+                    if not Config.ChristmasFarm then break end
+                    dropOnto(pos)
+                    task.wait(delayTime)
+                end
             end
         end
     end)
