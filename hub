@@ -234,7 +234,7 @@ MainTab:CreateToggle({
 -- ⭐ Christmas Event Zone dropdown
 MainTab:CreateDropdown({
     Name = "Christmas Event Zone",
-    Options = { "First", "Second", "Third" },
+    Options = { "First", "Second", "Third", "All" },
     CurrentOption = { cfg.EventZone or "First" },
     Flag = "EventZone",
     Callback = function(Option)
