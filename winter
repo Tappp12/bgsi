@@ -8,7 +8,7 @@ end
 local Config = getgenv().Config
 
 -- shorter delay between teleports
-local delayTime = 3.7  -- was 15
+local delayTime = 3.5  -- was 15
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
