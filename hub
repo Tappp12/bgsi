@@ -94,6 +94,8 @@ end
 --==================================================
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local localPlayer = Players.LocalPlayer
 
 -- Auto potion variables
 local autoPotionEnabled = false
@@ -112,6 +114,33 @@ local remote = ReplicatedStorage
     :WaitForChild("Network")
     :WaitForChild("Remote")
     :WaitForChild("RemoteEvent")
+
+-- ⭐ Movement lock helpers for Christmas farm
+local controls
+
+local function LockMovement()
+    local success, err = pcall(function()
+        if not controls then
+            local playerModule = localPlayer:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule")
+            controls = require(playerModule):GetControls()
+        end
+        controls:Disable()
+    end)
+    if not success then
+        warn("[BGSI GUI] Failed to lock movement:", err)
+    end
+end
+
+local function UnlockMovement()
+    if controls then
+        local success, err = pcall(function()
+            controls:Enable()
+        end)
+        if not success then
+            warn("[BGSI GUI] Failed to unlock movement:", err)
+        end
+    end
+end
 
 --==================================================
 -- WINDOW WITH CONFIG SAVING
@@ -228,7 +257,7 @@ MainTab:CreateToggle({
     end,
 })
 
--- ⭐ Christmas Farm toggle (teleport all houses)
+-- ⭐ Christmas Farm toggle (teleport all houses + movement lock)
 MainTab:CreateToggle({
     Name = "Christmas Farm (TP houses)",
     CurrentValue = cfg.ChristmasFarm,
@@ -238,21 +267,24 @@ MainTab:CreateToggle({
         print("[BGSI GUI] ChristmasFarm:", cfg.ChristmasFarm)
 
         if Value then
+            LockMovement()
             local ok, errX = pcall(function()
                 loadstring(game:HttpGet(cfg.ChristmasEventScript))()
             end)
             if not ok then
                 warn("[BGSI GUI] Failed to load Christmas Event script:", errX)
+                UnlockMovement()
             else
                 print("[BGSI GUI] Christmas Event script (farm) started.")
             end
         else
+            UnlockMovement()
             print("[BGSI GUI] Christmas farm turned OFF in config (rejoin to fully stop loop).")
         end
     end,
 })
 
--- ⭐ Festival Spin Tickets toggle
+-- ⭐ Festival Spin Tickets toggle (unchanged, no movement lock)
 MainTab:CreateToggle({
     Name = "Festival Spin Tickets",
     CurrentValue = cfg.FestivalSpin,
