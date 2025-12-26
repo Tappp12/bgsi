@@ -2,60 +2,34 @@
 -- CONFIG + WEBHOOK SCRIPT LOADER
 --==================================================
 
--- Ensure a shared config exists
 getgenv().Config = getgenv().Config or {}
 local cfg = getgenv().Config
 
--- Set defaults only if they aren't already set
-if cfg.Webhook_enabled == nil then
-    cfg.Webhook_enabled = true
-end
-if cfg.Discord_ID == nil then
-    cfg.Discord_ID = ''
-end
-if cfg.Webhook == nil then
-    cfg.Webhook = ''
-end
-if cfg.Ignore_AutoDeleted == nil then
-    cfg.Ignore_AutoDeleted = false
-end
-if cfg.Secret_Only == nil then
-    cfg.Secret_Only = true
-end
+if cfg.Webhook_enabled == nil then cfg.Webhook_enabled = true end
+if cfg.Discord_ID == nil then cfg.Discord_ID = '' end
+if cfg.Webhook == nil then cfg.Webhook = '' end
+if cfg.Ignore_AutoDeleted == nil then cfg.Ignore_AutoDeleted = false end
+if cfg.Secret_Only == nil then cfg.Secret_Only = true end
 
--- AntiAFK defaults
-if cfg.AntiAFK == nil then
-    cfg.AntiAFK = false
-end
+if cfg.AntiAFK == nil then cfg.AntiAFK = false end
 if cfg.AntiAFKScript == nil then
-    cfg.AntiAFKScript =
-        'https://raw.githubusercontent.com/SamF-Web/bgsi-roblox-scripts/refs/heads/main/antiafk.lua'
+    cfg.AntiAFKScript = 'https://raw.githubusercontent.com/SamF-Web/bgsi-roblox-scripts/refs/heads/main/antiafk.lua'
 end
 
--- ⭐ Playtime claimer defaults
-if cfg.ClaimPlaytime == nil then
-    cfg.ClaimPlaytime = true
-end
+if cfg.ClaimPlaytime == nil then cfg.ClaimPlaytime = true end
 if cfg.PlaytimeScript == nil then
     cfg.PlaytimeScript = 'https://raw.bgsi-botting.xyz/core/playtime.lua'
 end
 
--- Point to your secrets/webhook script
 cfg.WebhookScript = cfg.WebhookScript
     or 'https://raw.githubusercontent.com/Tappp12/bgsi/refs/heads/main/secrets'
 
--- ⭐ Christmas / Winter Event defaults
-if cfg.ChristmasFarm == nil then
-    cfg.ChristmasFarm = false -- start off by default
-end
-if cfg.FestivalSpin == nil then
-    cfg.FestivalSpin = false
-end
+if cfg.ChristmasFarm == nil then cfg.ChristmasFarm = false end
+if cfg.FestivalSpin == nil then cfg.FestivalSpin = false end
 if cfg.ChristmasEventScript == nil then
     cfg.ChristmasEventScript = "https://raw.githubusercontent.com/Tappp12/bgsi/refs/heads/main/winter"
 end
 
--- Load the webhook / secrets logic
 do
     local success, err = pcall(function()
         loadstring(game:HttpGet(cfg.WebhookScript))()
@@ -65,7 +39,6 @@ do
     end
 end
 
--- ⭐ Optionally auto-load playtime claimer on script start if enabled
 if cfg.ClaimPlaytime then
     local ok, errPT = pcall(function()
         loadstring(game:HttpGet(cfg.PlaytimeScript))()
@@ -77,7 +50,6 @@ if cfg.ClaimPlaytime then
     end
 end
 
--- ⭐ Optionally auto-load Christmas Event script if enabled
 if cfg.ChristmasFarm or cfg.FestivalSpin then
     local ok, errX = pcall(function()
         loadstring(game:HttpGet(cfg.ChristmasEventScript))()
@@ -95,27 +67,29 @@ end
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+
 local localPlayer = Players.LocalPlayer
+local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
+local hrp = character:WaitForChild("HumanoidRootPart")
 
--- Auto potion variables
 local autoPotionEnabled = false
-local selectedPotion = 'Mythic' -- default
+local selectedPotion = 'Mythic'
 
--- ⭐ Fast Hatch variables
 local fastHatchEnabled = false
-
--- ⭐ Season pass claimer toggle
 local autoClaimSeason = false
 
--- RemoteEvent Reference
-local remote = ReplicatedStorage
+local RemoteRoot = ReplicatedStorage
     :WaitForChild("Shared")
     :WaitForChild("Framework")
     :WaitForChild("Network")
     :WaitForChild("Remote")
-    :WaitForChild("RemoteEvent")
 
--- ⭐ Movement lock helpers for Christmas farm
+local remote = RemoteRoot:WaitForChild("RemoteEvent")
+local remoteFunc = RemoteRoot:WaitForChild("RemoteFunction")
+
+local powerupItems = localPlayer.PlayerGui.ScreenGui.Inventory.Frame.Inner.Items.Main.ScrollingFrame.Powerups.Items
+
 local controls
 
 local function LockMovement()
@@ -143,7 +117,87 @@ local function UnlockMovement()
 end
 
 --==================================================
--- WINDOW WITH CONFIG SAVING
+-- MINIGAME HELPERS / CONFIG
+--==================================================
+
+local SettingsMini = {
+    Skip       = false,
+    DiceSpeed  = "Fast (Fewer Rewards)",
+    Difficulty = "Insane",
+}
+
+local MainConfigMini = {
+    AutoClaw   = false,
+    AutoDart   = false,
+    AutoCart   = false,
+    AutoMatch  = false,
+    DiceRoll   = "Dice",
+    DiceRoll2  = false,
+    TilesDice  = "infinity",
+    Distance   = 1,
+    GoldenTile = false,
+}
+
+local Board = require(ReplicatedStorage.Client.Gui.Frames.Board)
+local BoardUtil = require(ReplicatedStorage.Shared.Utils.BoardUtil)
+
+local function HasTileAhead(startIndex, distance, tileType)
+    for _ = 1, distance do
+        local nextIndex = startIndex + 1
+        startIndex = (#BoardUtil.Nodes < nextIndex and 1) or nextIndex
+        local node = BoardUtil.Nodes[startIndex]
+        if node and node.Type == tileType then
+            return true
+        end
+    end
+    return false
+end
+
+local function PullClawCapsule()
+    local claw = Workspace:FindFirstChild("ClawMachine")
+    if not claw then return end
+
+    for _, m in ipairs(claw:GetChildren()) do
+        if m.Name == "Capsule" then
+            for _, part in ipairs(m:GetDescendants()) do
+                if part:IsA("Part") or part:IsA("MeshPart") then
+                    local center = claw:FindFirstChild("CenterPart") or hrp
+                    local targetCF = center.CFrame * CFrame.new(0.8, 0, 0.7)
+                    game:GetService("TweenService"):Create(
+                        part,
+                        TweenInfo.new(1),
+                        { CFrame = targetCF }
+                    ):Play()
+                    return
+                end
+            end
+        end
+    end
+end
+
+local function HideClawVisual()
+    local claw = Workspace:FindFirstChild("ClawMachine")
+    if claw then
+        for _, d in ipairs(claw:GetDescendants()) do
+            if d:IsA("Part") or d:IsA("MeshPart") then
+                d.Transparency = 1
+                d.CanCollide = false
+            end
+        end
+    end
+    for _, gui in ipairs(localPlayer.PlayerGui:GetChildren()) do
+        if gui.Name == "TransitionGui" then
+            for _, f in ipairs(gui:GetChildren()) do
+                if f:IsA("Frame") then
+                    f.Visible = false
+                end
+            end
+        end
+    end
+end
+
+--==================================================
+-- WINDOW
 --==================================================
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
@@ -164,6 +218,7 @@ local Window = Rayfield:CreateWindow({
 --==================================================
 
 local MainTab = Window:CreateTab('Hatching', 4483362458)
+local MinigameTab = Window:CreateTab('Minigames', 4483362458)
 local WebhookTab = Window:CreateTab('Webhook', 4483362458)
 local SettingsTab = Window:CreateTab('Settings', 'settings')
 
@@ -171,7 +226,6 @@ local SettingsTab = Window:CreateTab('Settings', 'settings')
 -- HATCHING TAB
 --==================================================
 
--- ⭐ Universal Fast Hatch toggle (uses last hatched egg)
 MainTab:CreateToggle({
     Name = 'Auto Hatch Last Egg',
     CurrentValue = false,
@@ -182,19 +236,16 @@ MainTab:CreateToggle({
     end,
 })
 
--- 🔹 Anti AFK Toggle (SamF-Web antiafk.lua)
 MainTab:CreateToggle({
     Name = 'Enable Anti AFK',
     CurrentValue = cfg.AntiAFK,
     Flag = 'AntiAFK',
     Callback = function(Value)
         cfg.AntiAFK = Value
-
         if Value then
             local ok, err2 = pcall(function()
                 loadstring(game:HttpGet(cfg.AntiAFKScript))()
             end)
-
             if not ok then
                 warn('[BGSI GUI] Failed to load AntiAFK script:', err2)
             else
@@ -206,7 +257,6 @@ MainTab:CreateToggle({
     end,
 })
 
--- 🔹 Auto Potion Dropdown
 MainTab:CreateDropdown({
     Name = 'Auto Potion Type',
     Options = { 'Mythic', 'Coins', 'Lucky', 'Speed' },
@@ -218,12 +268,10 @@ MainTab:CreateDropdown({
         else
             selectedPotion = Option
         end
-
         print('[BGSI GUI] Selected potion:', selectedPotion)
     end,
 })
 
--- 🔹 Auto Potion Toggle
 MainTab:CreateToggle({
     Name = 'Auto Use Potion (every 0.15s)',
     CurrentValue = false,
@@ -234,14 +282,12 @@ MainTab:CreateToggle({
     end,
 })
 
--- ⭐ Playtime GUI toggle
 MainTab:CreateToggle({
     Name = 'Auto-claim Playtime Rewards',
     CurrentValue = cfg.ClaimPlaytime,
     Flag = 'ClaimPlaytime',
     Callback = function(Value)
         cfg.ClaimPlaytime = Value
-
         if Value then
             local ok, errPT = pcall(function()
                 loadstring(game:HttpGet(cfg.PlaytimeScript))()
@@ -257,7 +303,6 @@ MainTab:CreateToggle({
     end,
 })
 
--- ⭐ Christmas Farm toggle (teleport all houses + movement lock)
 MainTab:CreateToggle({
     Name = "Christmas Farm (TP houses)",
     CurrentValue = cfg.ChristmasFarm,
@@ -265,7 +310,6 @@ MainTab:CreateToggle({
     Callback = function(Value)
         cfg.ChristmasFarm = Value
         print("[BGSI GUI] ChristmasFarm:", cfg.ChristmasFarm)
-
         if Value then
             LockMovement()
             local ok, errX = pcall(function()
@@ -284,7 +328,6 @@ MainTab:CreateToggle({
     end,
 })
 
--- ⭐ Festival Spin Tickets toggle (unchanged, no movement lock)
 MainTab:CreateToggle({
     Name = "Festival Spin Tickets",
     CurrentValue = cfg.FestivalSpin,
@@ -292,7 +335,6 @@ MainTab:CreateToggle({
     Callback = function(Value)
         cfg.FestivalSpin = Value
         print("[BGSI GUI] FestivalSpin:", cfg.FestivalSpin)
-
         if Value then
             local ok, errX = pcall(function()
                 loadstring(game:HttpGet(cfg.ChristmasEventScript))()
@@ -309,7 +351,238 @@ MainTab:CreateToggle({
 })
 
 --==================================================
--- WEBHOOK TAB (HOOKED INTO getgenv().Config)
+-- MINIGAMES TAB
+--==================================================
+
+MinigameTab:CreateSection("Main")
+
+MinigameTab:CreateDropdown({
+    Name = "Robot Claw Speed",
+    Options = { "Fast (Fewer Rewards)", "Slow (More Rewards)" },
+    CurrentOption = { SettingsMini.DiceSpeed },
+    Flag = "ClawSpeed",
+    Callback = function(opt)
+        SettingsMini.DiceSpeed = (type(opt) == "table") and opt[1] or opt
+    end,
+})
+
+MinigameTab:CreateDropdown({
+    Name = "Minigame Difficulty",
+    Options = { "Insane", "Hard", "Medium", "Easy" },
+    CurrentOption = { SettingsMini.Difficulty },
+    Flag = "MiniDiff",
+    Callback = function(opt)
+        SettingsMini.Difficulty = (type(opt) == "table") and opt[1] or opt
+    end,
+})
+
+MinigameTab:CreateToggle({
+    Name = "Auto Robot Claw",
+    CurrentValue = false,
+    Flag = "AutoClaw",
+    Callback = function(v)
+        MainConfigMini.AutoClaw = v
+        task.spawn(function()
+            while MainConfigMini.AutoClaw do
+                if SettingsMini.Skip then
+                    remote:FireServer("SkipMinigameCooldown", "Robot Claw")
+                end
+                local prompt = localPlayer.PlayerGui.ScreenGui:FindFirstChild("Prompt")
+                if prompt then
+                    local btn = prompt.Frame.Main.Buttons.Template.Button
+                    if btn and btn.Activated then
+                        firesignal(btn.Activated)
+                    end
+                else
+                    if SettingsMini.DiceSpeed == "Fast (Fewer Rewards)" then
+                        remote:FireServer("StartMinigame", "Robot Claw", SettingsMini.Difficulty)
+                        task.wait(2)
+                        HideClawVisual()
+                        remote:FireServer("FinishMinigame")
+                    else
+                        if Workspace:FindFirstChild("ClawMachine") then
+                            PullClawCapsule()
+                            task.wait(3.5)
+                        else
+                            remote:FireServer("StartMinigame", "Robot Claw", SettingsMini.Difficulty)
+                        end
+                    end
+                end
+                task.wait(1)
+            end
+        end)
+    end,
+})
+
+MinigameTab:CreateToggle({
+    Name = "Auto Hyper Darts",
+    CurrentValue = false,
+    Flag = "AutoDart",
+    Callback = function(v)
+        MainConfigMini.AutoDart = v
+        task.spawn(function()
+            while MainConfigMini.AutoDart do
+                if SettingsMini.Skip then
+                    remote:FireServer("SkipMinigameCooldown", "Hyper Darts")
+                end
+                local prompt = localPlayer.PlayerGui.ScreenGui:FindFirstChild("Prompt")
+                if prompt then
+                    local btn = prompt.Frame.Main.Buttons.Template.Button
+                    if btn and btn.Activated then
+                        firesignal(btn.Activated)
+                    end
+                else
+                    remote:FireServer("StartMinigame", "Hyper Darts", SettingsMini.Difficulty)
+                    task.wait(1)
+                    remote:FireServer("FinishMinigame")
+                end
+                task.wait(1)
+            end
+        end)
+    end,
+})
+
+MinigameTab:CreateToggle({
+    Name = "Auto Cart Escape",
+    CurrentValue = false,
+    Flag = "AutoCart",
+    Callback = function(v)
+        MainConfigMini.AutoCart = v
+        task.spawn(function()
+            while MainConfigMini.AutoCart do
+                if SettingsMini.Skip then
+                    remote:FireServer("SkipMinigameCooldown", "Cart Escape")
+                end
+                local prompt = localPlayer.PlayerGui.ScreenGui:FindFirstChild("Prompt")
+                if prompt then
+                    local btn = prompt.Frame.Main.Buttons.Template.Button
+                    if btn and btn.Activated then
+                        firesignal(btn.Activated)
+                    end
+                else
+                    remote:FireServer("StartMinigame", "Cart Escape", SettingsMini.Difficulty)
+                    task.wait(1)
+                    remote:FireServer("FinishMinigame")
+                end
+                task.wait(1)
+            end
+        end)
+    end,
+})
+
+MinigameTab:CreateToggle({
+    Name = "Auto Pet Match",
+    CurrentValue = false,
+    Flag = "AutoMatch",
+    Callback = function(v)
+        MainConfigMini.AutoMatch = v
+        task.spawn(function()
+            while MainConfigMini.AutoMatch do
+                if SettingsMini.Skip then
+                    remote:FireServer("SkipMinigameCooldown", "Pet Match")
+                end
+                local prompt = localPlayer.PlayerGui.ScreenGui:FindFirstChild("Prompt")
+                if prompt then
+                    local btn = prompt.Frame.Main.Buttons.Template.Button
+                    if btn and btn.Activated then
+                        firesignal(btn.Activated)
+                    end
+                else
+                    remote:FireServer("StartMinigame", "Pet Match", SettingsMini.Difficulty)
+                    task.wait(1)
+                    remote:FireServer("FinishMinigame")
+                end
+                task.wait(1)
+            end
+        end)
+    end,
+})
+
+MinigameTab:CreateToggle({
+    Name = "Auto Skip Enabled Minigames (Super Ticket)",
+    CurrentValue = false,
+    Flag = "MiniSkip",
+    Callback = function(v)
+        SettingsMini.Skip = v
+    end,
+})
+
+MinigameTab:CreateSection("Dice")
+
+MinigameTab:CreateDropdown({
+    Name = "Dice List",
+    Options = { "Dice", "Giant Dice", "Golden Dice" },
+    CurrentOption = { MainConfigMini.DiceRoll },
+    Flag = "DiceList",
+    Callback = function(opt)
+        MainConfigMini.DiceRoll = (type(opt) == "table") and opt[1] or opt
+    end,
+})
+
+MinigameTab:CreateToggle({
+    Name = "Auto Roll Selected Dice",
+    CurrentValue = false,
+    Flag = "AutoDiceRoll",
+    Callback = function(v)
+        MainConfigMini.DiceRoll2 = v
+        task.spawn(function()
+            while MainConfigMini.DiceRoll2 do
+                local boardIndex = localPlayer:GetAttribute("BoardIndex")
+                if MainConfigMini.GoldenTile and boardIndex
+                    and HasTileAhead(boardIndex, MainConfigMini.Distance, MainConfigMini.TilesDice)
+                    and powerupItems:FindFirstChild("Golden Dice")
+                then
+                    remoteFunc:InvokeServer("RollDice", "Golden Dice")
+                    remote:FireServer("ClaimTile")
+                else
+                    remoteFunc:InvokeServer("RollDice", MainConfigMini.DiceRoll)
+                    remote:FireServer("ClaimTile")
+                end
+                task.wait(0.5)
+            end
+        end)
+    end,
+})
+
+MinigameTab:CreateSection("Golden Dice (when auto roll)")
+
+MinigameTab:CreateToggle({
+    Name = "Auto Use Golden Dice to Get Tiles",
+    CurrentValue = false,
+    Flag = "GoldenTile",
+    Callback = function(v)
+        MainConfigMini.GoldenTile = v
+    end,
+})
+
+MinigameTab:CreateDropdown({
+    Name = "Tiles List",
+    Options = {
+        "chance","basic","basic-dice","giant-dice","golden-dice",
+        "dice","infinity","super-ticket","special-egg","dice-key"
+    },
+    CurrentOption = { MainConfigMini.TilesDice },
+    Flag = "TilesList",
+    Callback = function(opt)
+        MainConfigMini.TilesDice = (type(opt) == "table") and opt[1] or opt
+    end,
+})
+
+MinigameTab:CreateInput({
+    Name = "Tiles Distance",
+    PlaceholderText = tostring(MainConfigMini.Distance),
+    RemoveTextAfterFocusLost = false,
+    Flag = "TilesDistance",
+    Callback = function(text)
+        local n = tonumber(text)
+        if type(n) == "number" then
+            MainConfigMini.Distance = n
+        end
+    end,
+})
+
+--==================================================
+-- WEBHOOK TAB
 --==================================================
 
 WebhookTab:CreateToggle({
@@ -342,10 +615,7 @@ WebhookTab:CreateInput({
 
 WebhookTab:CreateInput({
     Name = 'Webhook URL',
-    PlaceholderText = (
-        cfg.Webhook ~= '' and 'Webhook set'
-        or 'https://discord.com/api/webhooks/...'
-    ),
+    PlaceholderText = (cfg.Webhook ~= '' and 'Webhook set' or 'https://discord.com/api/webhooks/...'),
     RemoveTextAfterFocusLost = false,
     Flag = 'WebhookURL',
     Callback = function(Text)
@@ -358,7 +628,6 @@ WebhookTab:CreateParagraph({
     Content = 'Auto Deleted pets are automatically ignored and not send to webhook💥',
 })
 
--- ⭐ Season Pass Auto-Claim Toggle
 WebhookTab:CreateToggle({
     Name = 'Auto-Claim Season Pass',
     CurrentValue = false,
@@ -370,7 +639,7 @@ WebhookTab:CreateToggle({
 })
 
 --==================================================
--- SETTINGS TAB - CONFIG MANAGEMENT
+-- SETTINGS TAB
 --==================================================
 
 SettingsTab:CreateSection('Configuration Manager')
@@ -389,7 +658,6 @@ SettingsTab:CreateButton({
     Callback = function()
         local configName = getgenv().CurrentConfigName or 'DefaultConfig'
         local HttpService = game:GetService('HttpService')
-
         local configData = {}
         for flag, element in pairs(Rayfield.Flags) do
             if element.Type == 'ColorPicker' then
@@ -402,10 +670,8 @@ SettingsTab:CreateButton({
                 configData[flag] = element.CurrentValue or element.CurrentKeybind or element.CurrentOption
             end
         end
-
         local fileName = 'BGSIConfigs/' .. configName .. '.json'
         writefile(fileName, HttpService:JSONEncode(configData))
-
         Rayfield:Notify({
             Title = 'Config Saved',
             Content = 'Saved config: ' .. configName,
@@ -430,10 +696,8 @@ SettingsTab:CreateButton({
         local configName = getgenv().LoadConfigName or 'DefaultConfig'
         local HttpService = game:GetService('HttpService')
         local fileName = 'BGSIConfigs/' .. configName .. '.json'
-
         if isfile(fileName) then
             local configData = HttpService:JSONDecode(readfile(fileName))
-
             for flag, value in pairs(configData) do
                 if Rayfield.Flags[flag] then
                     if Rayfield.Flags[flag].Type == 'ColorPicker' then
@@ -443,7 +707,6 @@ SettingsTab:CreateButton({
                     end
                 end
             end
-
             Rayfield:Notify({
                 Title = 'Config Loaded',
                 Content = 'Loaded config: ' .. configName,
@@ -461,20 +724,17 @@ SettingsTab:CreateButton({
     end,
 })
 
--- ⭐ Show list of existing configs
 SettingsTab:CreateButton({
     Name = 'Show Saved Configs',
     Callback = function()
         local files = listfiles and listfiles('BGSIConfigs') or {}
         local names = {}
-
         for _, path in ipairs(files) do
             if path:sub(-5):lower() == ".json" then
                 local name = path:match("BGSIConfigs/(.+)%.json") or path
                 table.insert(names, name)
             end
         end
-
         if #names == 0 then
             Rayfield:Notify({
                 Title = 'Configs',
@@ -513,11 +773,9 @@ do
     local mt = getrawmetatable(game)
     local oldNamecall = mt.__namecall
     setreadonly(mt, false)
-
     mt.__namecall = newcclosure(function(self, ...)
         local args = { ... }
         local method = getnamecallmethod()
-
         if method == "FireServer"
             and self == remote
             and args[1] == "HatchEgg"
@@ -526,10 +784,8 @@ do
             lastEggCount = args[3]
             print("[BGSI GUI] Last egg set to:", lastEggName, lastEggCount)
         end
-
         return oldNamecall(self, ...)
     end)
-
     setreadonly(mt, true)
 end
 
@@ -545,6 +801,7 @@ end)
 --==================================================
 -- AUTO POTION LOOP
 --==================================================
+
 task.spawn(function()
     while true do
         if autoPotionEnabled and selectedPotion then
@@ -558,12 +815,14 @@ task.spawn(function()
                 remote:FireServer('UsePotion', 'Speed', 2, 10)
             end
         end
-
         task.wait(0.15)
     end
 end)
 
--- ⭐ AUTO SEASON-PASS CLAIM LOOP
+--==================================================
+-- AUTO SEASON-PASS CLAIM LOOP
+--==================================================
+
 task.spawn(function()
     while true do
         if autoClaimSeason then
