@@ -127,15 +127,17 @@ local SettingsMini = {
 }
 
 local MainConfigMini = {
-    AutoClaw   = false,
-    AutoDart   = false,
-    AutoCart   = false,
-    AutoMatch  = false,
-    DiceRoll   = "Dice",
-    DiceRoll2  = false,
-    TilesDice  = "infinity",
-    Distance   = 1,
-    GoldenTile = false,
+    AutoClaw        = false,
+    AutoDart        = false,
+    AutoCart        = false,
+    AutoMatch       = false,
+    AutoCircusMatch = false,
+    AutoCircusFarm  = false,
+    DiceRoll        = "Dice",
+    DiceRoll2       = false,
+    TilesDice       = "infinity",
+    Distance        = 1,
+    GoldenTile      = false,
 }
 
 local Board = require(ReplicatedStorage.Client.Gui.Frames.Board)
@@ -194,6 +196,20 @@ local function HideClawVisual()
             end
         end
     end
+end
+
+--==================================================
+-- CIRCUS AUTO FARM CONFIG
+--==================================================
+
+local CircusPetMatchPos   = CFrame.new(-2327.25439, 10.2435932, 285.830658)
+local GrandmasterChestPos = CFrame.new(-2368.09106, 12.3162966, 325.654266)
+
+-- how often to open the chest (seconds)
+local CircusChestCooldown = 3
+
+local function OpenGrandmasterChest()
+    remote:FireServer("UnlockEventChest", "Circus Chest", false)
 end
 
 --==================================================
@@ -493,6 +509,73 @@ MinigameTab:CreateToggle({
                     remote:FireServer("FinishMinigame")
                 end
                 task.wait(1)
+            end
+        end)
+    end,
+})
+
+MinigameTab:CreateToggle({
+    Name = "Auto Circus Pet Match",
+    CurrentValue = false,
+    Flag = "AutoCircusMatch",
+    Callback = function(v)
+        MainConfigMini.AutoCircusMatch = v
+        task.spawn(function()
+            while MainConfigMini.AutoCircusMatch do
+                if SettingsMini.Skip then
+                    remote:FireServer("SkipMinigameCooldown", "Circus Pet Match")
+                end
+
+                local prompt = localPlayer.PlayerGui.ScreenGui:FindFirstChild("Prompt")
+                if prompt then
+                    local btn = prompt.Frame.Main.Buttons.Template.Button
+                    if btn and btn.Activated then
+                        firesignal(btn.Activated)
+                    end
+                else
+                    remote:FireServer("StartMinigame", "Circus Pet Match", SettingsMini.Difficulty)
+                    task.wait(1)
+                    remote:FireServer("FinishMinigame")
+                end
+
+                task.wait(1)
+            end
+        end)
+    end,
+})
+
+MinigameTab:CreateToggle({
+    Name = "Circus Grandmaster Chest Farm",
+    CurrentValue = false,
+    Flag = "AutoCircusFarm",
+    Callback = function(v)
+        MainConfigMini.AutoCircusFarm = v
+        task.spawn(function()
+            local lastChestTime = 0
+
+            while MainConfigMini.AutoCircusFarm do
+                -- only run this while Circus Pet Match auto is also on
+                if MainConfigMini.AutoCircusMatch and hrp then
+                    local now = tick()
+                    if now - lastChestTime >= CircusChestCooldown then
+                        lastChestTime = now
+
+                        local originalCF = hrp.CFrame
+
+                        -- TP to chest
+                        hrp.CFrame = GrandmasterChestPos
+                        task.wait(0.08)
+
+                        -- open chest
+                        OpenGrandmasterChest()
+                        task.wait(0.05)
+
+                        -- TP back to where you were in the minigame
+                        hrp.CFrame = originalCF
+                    end
+                end
+
+                task.wait(0.1)
             end
         end)
     end,
